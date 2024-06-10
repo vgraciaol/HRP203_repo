@@ -1,0 +1,293 @@
+---
+title: "HRP 203: Module 3 Project"
+author: "Valeria Gracia Olvera"
+format: 
+  pdf:
+    fig-pos: 'H'
+    geometry:
+      - top=25mm
+      - left=25mm
+      - right=25mm
+      - bottom=25mm
+      - heightrounded
+editor: 
+  markdown: 
+    wrap: sentence
+bibliography: references.bib
+fig-cap-location: bottom
+---
+
+```{r}
+#| label: libraries
+#| eval: true  # run code, default is TRUE
+#| echo: false # output only
+#| include: false
+# Load libraries
+library(ggplot2)
+library(tidyverse)
+library(GGally)
+library(knitr)
+library(tidyr)
+library(jtools)
+library(stargazer)
+library(broom)
+library(renv)
+library(gtsummary)
+```
+
+[GitHub repository](https://github.com/vgraciaol/HRP203_repo)
+
+# Introduction
+
+Health care costs can be explained by factors such as age, gender, heart problems, and behaviors such as smoking.
+Estimating the effect of these factors on healthcare costs could help allocate resources in the healthcare system.
+In addition, it can also help estimate the economic impact of public health campaigns, such as smoking cessation campaigns.
+
+The goal of this project is twofold: (1) estimate the effect of age, sex, heart problems, and smoking on health care costs; (2) evaluate the economic effect of smoking cessation campaigns.
+
+# Methods
+
+## Data
+
+I used data provided in [Assignment 7](https://github.com/MethodsForReproducibleHealthResearch/Assignment7) which contains 5,000 simulated observations with `smoke`, `sex`, `age`, `cardiac`, and `cost` variables\footnote{I assumed the definition and description of the variables by looking at the data, but I have no more information to confirm it.} which are defined in @tbl-vars.
+
+```{r}
+#| label: tbl-vars
+#| eval: true  # do not run code, default is TRUE
+#| echo: false # output only
+
+# Create data.frame
+df_vars <- data.frame(variable = c("cost","age","female","cardiac","smoke"),
+                      definition = c("Healthcare cost per year in USD", "Age in years", 
+                                     "If =1 female","If =1 has heart problems","If =1 smoker"))
+
+kable(df_vars, 
+      col.names = c("Variable","Definition"),
+      align = c("r","l"),
+      caption = "Variable definition")
+```
+
+```{r}
+#| label: load_data
+#| eval: true  # run code, default is TRUE
+#| echo: false # output only
+
+# Load data from repository
+df_cohort_raw <- read.csv(file="https://raw.githubusercontent.com/MethodsForReproducibleHealthResearch/Assignment7/main/raw-data/cohort.csv")
+
+# Save raw data in repo
+write.csv(df_cohort_raw, file = "data_raw/df_cohort_raw.csv")
+
+# Copy of the data 
+df_cohort <- df_cohort_raw %>% 
+  rename(sex = female)
+
+# Transform discrete to factors
+df_cohort$smoke <- factor(df_cohort$smoke, levels = c(1,0), 
+                          labels = c("Yes", "No"))
+df_cohort$sex <- factor(df_cohort$sex, levels = c(1,0), 
+                           labels = c("female", "male"))
+df_cohort$cardiac <- factor(df_cohort$cardiac, levels = c(1,0), 
+                            labels = c("Yes", "No"))
+```
+
+## Model
+
+The relationship between the outcome and the explanatory variables can be written as: $$ cost_i = \beta_0 + \beta_1 age_i + \beta_2 I(female_i) + \beta_3 I(cardiac_i) + \beta_4 I(smoke_i) + \epsilon_i $$ where, $i$ indexes by individual, $I(\cdot)$ represents an indicator variable, and $\epsilon$ is the error term.
+
+# Results
+
+## Descriptive statistics
+
+Descriptive statistics for the two continuous variables and the distribution between smokers or non-smokers (`smoke`), those who have heart problems (`cardiac`) or not, by sex, are presented in @tbl-descriptive-stats.
+Note that the proportion of men and women who do not have heart problems is practically the same.
+On the other hand, smokers and men are more likely to have heart problems and have higher healthcare costs.
+
+```{r}
+#| label: tbl-descriptive-stats
+#| eval: true  # run code
+#| echo: false # output only
+#| message: false
+#| tbl-cap: "Descriptive statistics by heart problems"
+
+# Descriptive statistics
+gtsummary::tbl_summary(df_cohort, by = c("cardiac"))
+```
+
+## Regression results
+
+I estimated the effect of age, sex, heart problems, and smoking on the cost of healthcare.
+@tbl-regression presents the regression results.
+
+```{r}
+#| label: tbl-regression
+#| eval: true  # run code
+#| echo: false # output only
+#| message: false
+#| tbl-cap: "Regression results"
+
+# Regression
+lm_cohort <- lm(cost ~ age + female + cardiac + smoke, data = df_cohort_raw)
+gtsummary::tbl_regression(lm_cohort)
+```
+
+@fig-reg summarizes the relationship between the cost and the other variables of interest.
+We can see that the cost increases with age for men who smoke and have heart problems.
+
+```{r fig.height = 6, fig.width = 6}
+#| label: fig-reg
+#| eval: true  # run code
+#| echo: false # output only
+#| fig-cap: "Relationship between cost and all the other variables"
+#| warning: false
+ 
+df_plot <- df_cohort_raw %>% 
+  rename(sex = female)
+
+df_plot$smoke <- factor(df_plot$smoke, levels = c(1,0), 
+                        labels = c("Smoke: yes", "Smoke: no"))
+df_plot$sex <- factor(df_plot$sex, levels = c(1,0), 
+                      labels = c("Female", "Male"))
+df_plot$cardiac <- factor(df_plot$cardiac, levels = c(1,0), 
+                          labels = c("Heart problems: yes", "Heart problems: no"))
+
+ggplot(df_plot, aes(x = age, y = cost, color = cardiac)) +
+  geom_point(size = 2, alpha = 0.10) +
+  scale_colour_manual("", values = c("gray30", "steelblue")) +
+  scale_y_continuous(labels = scales::comma) +
+  facet_wrap(smoke ~ sex) +
+  geom_smooth(method = "lm", formula = y ~ x, se = F,
+              linewidth = 1.5) +
+  xlab("Age (years)") + ylab("Cost ($)") +
+  theme_bw(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 0, 
+                                   hjust = 0.5, 
+                                   vjust = 0.5,
+                                   colour = "black"),
+        axis.text.y = element_text(colour = "black"),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.7), 
+        strip.background = element_rect(fill   = "transparent",
+                                        colour = "transparent"),
+        legend.justification = "center", 
+        legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        legend.direction = "horizontal", 
+        legend.key = element_rect(fill   = "transparent", 
+                                  colour = "transparent",
+                                  size   = unit(3, "cm")))
+```
+
+## Results of a campaign to stop smoking
+
+Finally, I am going to estimate the economic impact of a smoking cessation campaign under different scenarios:
+
+```{=tex}
+\begin{description}
+  \item[Scenario A] The campaign is 60\% effective, i.e. 60\% of smokers quit smoking.
+  \item[Scenario B] The campaign is 85\% effective, i.e. 85\% of smokers quit smoking.
+\end{description}
+```
+I used the previously estimated model to predict the total cost in both scenarios and the status quo.
+I randomly selected 60% of the smokers in the sample and changed their smoking status to non-smoking for scenario A.
+I repeated this process now changing the smoking status of 85% of the smokers in the sample for scenario B.
+Lastly, I calculated total healthcare costs by scenario and took the difference from the status quo to estimate the campaign's financial savings.
+
+```{r}
+#| label: analysis-cessation-campaign
+#| eval: true  # run code
+#| echo: false # output only
+
+# Number of individuals in the sample
+n_indiv <- dim(df_cohort_raw)[1]
+
+# Create data.frame: status quo
+df_cohort_SQ <- df_cohort_raw %>% 
+  mutate(id = 1:n_indiv) %>% 
+  relocate(id)
+
+# Identify smokers and select randomly 60%/85% of them
+id_smokers <- df_cohort_SQ$id[df_cohort_SQ$smoke == 1]
+n_smokers <- length(id_smokers)
+v_smokers_A <- sample(id_smokers, size = floor(0.60*n_smokers), replace = F)
+v_smokers_B <- sample(id_smokers, size = floor(0.85*n_smokers), replace = F)
+
+# Identify and change people who quit smoking -- create new data.frame
+## Scenario A
+df_cohort_scnA <- df_cohort_SQ %>% 
+  mutate(quit_smoking = ifelse(id %in% v_smokers_A, 1, 0),
+         smoke = ifelse(quit_smoking == 1, 0, smoke))
+
+## Scenario B
+df_cohort_scnB <- df_cohort_SQ %>% 
+  mutate(quit_smoking = ifelse(id %in% v_smokers_B, 1, 0),
+         smoke = ifelse(quit_smoking == 1, 0, smoke))
+
+# Predict costs
+## Scenario A
+res_scnA <- predict(lm_cohort, newdata = df_cohort_scnA)
+df_cohort_scnA$predict_cost <- res_scnA
+
+## Scenario B
+res_scnB <- predict(lm_cohort, newdata = df_cohort_scnB)
+df_cohort_scnB$predict_cost <- res_scnB
+
+## Status quo
+res_scn <- predict(lm_cohort, newdata = df_cohort_SQ)
+df_cohort_SQ$predict_cost <- res_scn
+
+# Bind data.frames
+df_predict_costs <- rbind(df_cohort_SQ %>% mutate(type = "Status quo"),
+                          df_cohort_scnA %>% mutate(type = "Scenario A") %>% 
+                            select(-quit_smoking),
+                          df_cohort_scnB %>% mutate(type = "Scenario B") %>% 
+                            select(-quit_smoking))
+
+# Summarize
+df_predict_costs_summ <- df_predict_costs %>% 
+  group_by(type) %>% 
+  summarise(total_cost = sum(predict_cost))
+
+# Calculate difference from SQ
+df_predict_costs_summ$diff_SQ <- df_predict_costs_summ$total_cost - df_predict_costs_summ$total_cost[df_predict_costs_summ$type == "Status quo"]
+
+```
+
+Results are presented in @fig-cessation-campaign.
+Note that the highest savings comes from Scenario B, where `r round(-df_predict_costs_summ$diff_SQ[df_predict_costs_summ$type == "Scenario B"]/1000,0)` thousand USD are saved with the smoking campaign compared to status quo.
+
+```{r fig.height=3, fig.width=3.5}
+#| label: fig-cessation-campaign
+#| eval: true  # run code
+#| echo: false # output only
+#| fig-cap: "Economic impact of a smoking cessation campaign, savings compared to status quo."
+
+ggplot(subset(df_predict_costs_summ, type != "Status quo"),
+       aes(x = type, y = -diff_SQ, color = type, fill = type)) +
+  geom_bar(stat = "identity") +
+  xlab("") + ylab("Savings ($)") +
+  scale_colour_manual("", values = c("orange", "firebrick")) +
+  scale_fill_manual("", values = c("orange", "firebrick")) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(caption = "Scenario A: The campaign is 60% effective\n
+       Scenario B: The campaign is 85% effective") +
+  theme_bw(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 0, 
+                                   hjust = 0.5, 
+                                   vjust = 0.5,
+                                   colour = "black"),
+        axis.text.y = element_text(colour = "black"),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.7), 
+        strip.background = element_rect(fill   = "transparent",
+                                        colour = "transparent"),
+        legend.justification = "center", 
+        legend.position = "none",
+        legend.text = element_text(size = 12),
+        legend.direction = "horizontal", 
+        legend.key = element_rect(fill   = "transparent", 
+                                  colour = "transparent",
+                                  size   = unit(3, "cm")))
+```
